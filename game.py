@@ -44,21 +44,27 @@ class TkEngine(tk.Frame):
 
         self.camera_borders = 150
         self.light_radius = 150
+        self.enemy_light_damage = 3
         self.shadow_gap = 0  # = 4 Kinda experimented feature
         self.player_move_step = 5
-        self.player_break_time = 10
+        self.enemy_move_step = 10
+        self.player_break_time = 12
         self.sleep_after_move = False
         self.sleep_time = 0.05
 
         self.last_time = time.time()
-        self.timeout = 0.1
+        self.timeout = 1
 
     def new_game(self):
         self.render_canvas_map()
         self.put_player_on_map()
-        self.create_light('player', 'main_light')
-        self.canvas.move(tk.ALL, -self.player_cur_coords[0]+int(VISIBLE_WIDTH/2), -self.player_cur_coords[1]+int(VISIBLE_HEIGHT/2))
+        self.put_enemies_on_map()
+        self.update_lighting(force=True)
+        self.move_canvas_on_init()
         self.movement_handler()
+
+    def move_canvas_on_init(self):
+        self.canvas.move(tk.ALL, -self.player_cur_coords[0]+int(VISIBLE_WIDTH/2), -self.player_cur_coords[1]+int(VISIBLE_HEIGHT/2))
 
     def render_canvas_map(self):
         for y in range(len(test_map)):
@@ -83,15 +89,52 @@ class TkEngine(tk.Frame):
                                      player_coords[0]+size-1, player_coords[1]+size-1,
                                      outline='#111', fill=color, tag=tag)
 
+    def put_enemies_on_map(self):
+        _mapping = MAPPING['e']
+        tag = _mapping['tag']
+        color = _mapping['color']
+        size = _mapping['size']
+        for x in range(25):
+            while True:
+                repeat = False
+                _x, _y = [random.randint(35, WIDTH-35), random.randint(35, HEIGHT-35)]
+                overlaping_items = self.canvas.find_overlapping(_x - size*4, _y - size*4, _x + size*4, _y + size*4)
+                for oi in overlaping_items:
+                    e= self.canvas.gettags(oi)[0]
+                    if 'enemy' in self.canvas.gettags(oi)[0]:
+                        repeat = True
+                        break
+                if not repeat:
+                    self.canvas.create_rectangle(_x, _y, _x + size - 1, _y + size - 1, outline='#f66', fill=color, tag=tag)
+                    break
+
     def update(self):
-        self.timer()
+        self.random_enemies_move()
+        self.update_lighting()
         self.apply_shadows()
         self.master.update_idletasks()
         self.master.update()
 
-    def timer(self):
+    def random_enemies_move(self):
+        items = self.canvas.find_all()
+        moves = {'UP': [0, -1],
+                 'DOWN': [0, 1],
+                 'LEFT': [-1, 0],
+                 'RIGHT': [1, 0]}
+
+        for item in items:
+            collide_obj = self.canvas.gettags(item)[0]
+            if collide_obj in ['enemy'] and not random.randint(0, 3):
+                if random.randint(0, 1):
+                    move_dir, diff = random.choice(list(moves.items()))
+                    self.move(item, move_dir, diff[0], diff[1], self.player_move_step, 0)
+                else:
+                    for move_dir in random.choice(DIAGONAL_DIRECTIONS):
+                        self.move(item, move_dir, moves[move_dir][0], moves[move_dir][1], self.enemy_move_step, 0)
+
+    def update_lighting(self, force=False):
         cur_time = time.time()
-        if cur_time - self.last_time > self.timeout:
+        if cur_time - self.last_time > self.timeout or force:
             self.last_time = cur_time
             self.light_radius -= 1
             self.create_light('player', 'main_light')
@@ -208,6 +251,10 @@ class TkEngine(tk.Frame):
         return collides
 
     @staticmethod
+    def is_enemy(collide_objects):
+        return 'enemy' in collide_objects
+
+    @staticmethod
     def is_map_border(collide_objects):
         return 'map_border' in collide_objects
 
@@ -226,15 +273,22 @@ class TkEngine(tk.Frame):
         """
 
         collide_objects = self.get_next_step_collide_objects(obj, move_step * x_diff, move_step * y_diff)
+        is_enemy_ahead = self.is_enemy(collide_objects)
         is_wall_ahead = self.is_wall(collide_objects)
         is_border_ahead = self.is_map_border(collide_objects)
 
-        if not is_wall_ahead and not is_border_ahead:
+        if not is_wall_ahead and not is_border_ahead and not is_enemy_ahead:
             coords = [move_step*x_diff, move_step*y_diff]
         elif is_wall_ahead:
             coords = collide_objects.get('wall', [0, 0])
         elif is_border_ahead:
             coords = collide_objects.get('map_border', [0, 0])
+        elif obj == 'enemy' and is_enemy_ahead:
+            coords = [move_step*x_diff, move_step*y_diff]
+        elif obj == 'player' and is_enemy_ahead:
+            coords = [move_step*x_diff, move_step*y_diff]
+            self.light_radius -= self.enemy_light_damage
+            self.update_lighting(force=True)
         else:
             coords = [0, 0]
 
@@ -279,13 +333,13 @@ class TkEngine(tk.Frame):
                     break_time = int(break_time * 0.8)
 
                 if self.keyboard_is_pressed_from_list(sett.MOVEMENT_KEYS['UP']):
-                    self.move('player', 'up', 0, -1, self.player_move_step, break_time, 'main_light')
+                    self.move('player', 'UP', 0, -1, self.player_move_step, break_time, 'main_light')
                 if self.keyboard_is_pressed_from_list(sett.MOVEMENT_KEYS['DOWN']):
-                    self.move('player', 'down', 0, 1, self.player_move_step, break_time, 'main_light')
+                    self.move('player', 'DOWN', 0, 1, self.player_move_step, break_time, 'main_light')
                 if self.keyboard_is_pressed_from_list(sett.MOVEMENT_KEYS['LEFT']):
-                    self.move('player', 'left', -1, 0, self.player_move_step, break_time, 'main_light')
+                    self.move('player', 'LEFT', -1, 0, self.player_move_step, break_time, 'main_light')
                 if self.keyboard_is_pressed_from_list(sett.MOVEMENT_KEYS['RIGHT']):
-                    self.move('player', 'right', 1, 0, self.player_move_step, break_time, 'main_light')
+                    self.move('player', 'RIGHT', 1, 0, self.player_move_step, break_time, 'main_light')
             except Exception as e:
                 break
 
