@@ -2,22 +2,27 @@
 
 import keyboard
 import random
+import time
 import tkinter as tk
 
 from map import MAP as MAPPING
 import settings as sett
 
 
-# TODO: cleanup
-WIDTH = 500
-HEIGHT = 500
+# TODO: cleanup (seriously)
+WIDTH = 1000
+HEIGHT = 1000
+
+VISIBLE_WIDTH = 500
+VISIBLE_HEIGHT = 500
 
 CELL_SIZE = MAPPING['1']['size']
 HALF_CELL_SIZE = CELL_SIZE / 2
 
 X_CELLS = int(WIDTH / CELL_SIZE)
 Y_CELLS = int(HEIGHT / CELL_SIZE)
-test_map = [['0' if random.randint(0, 10) else '1' for x in range(X_CELLS)] for y in range(Y_CELLS)]
+test_map = [['0' if random.randint(0, 5) and not (x in [1, X_CELLS-1] or y in [1, Y_CELLS-1])
+             else '1' for x in range(X_CELLS)] for y in range(Y_CELLS)]
 
 DIAGONAL_DIRECTIONS = (('UP', 'RIGHT'), ('UP', 'LEFT'), ('DOWN', 'RIGHT'), ('DOWN', 'LEFT'))
 
@@ -30,21 +35,29 @@ class TkEngine(tk.Frame):
         self.grid()
         frame1 = tk.Frame(self)
         frame1.grid()
-        self.canvas = tk.Canvas(frame1, width=WIDTH, height=HEIGHT, bg="white")
+        self.canvas = tk.Canvas(frame1, width=VISIBLE_WIDTH, height=VISIBLE_HEIGHT, bg="white")
         self.canvas.grid(columnspan=3)
         self.canvas.focus_set()
 
+        self.player_start_coords = [int(VISIBLE_WIDTH/MAPPING['@']['size']), int(VISIBLE_HEIGHT/MAPPING['@']['size'])]
+        self.player_cur_coords = [self.player_start_coords[0]+int(WIDTH/2), self.player_start_coords[1]+int(HEIGHT/2)]
+
+        self.camera_borders = 150
         self.light_radius = 150
         self.shadow_gap = 0  # = 4 Kinda experimented feature
         self.player_move_step = 5
-        self.player_break_time = 20
+        self.player_break_time = 10
         self.sleep_after_move = False
         self.sleep_time = 0.05
+
+        self.last_time = time.time()
+        self.timeout = 0.1
 
     def new_game(self):
         self.render_canvas_map()
         self.put_player_on_map()
         self.create_light('player', 'main_light')
+        self.canvas.move(tk.ALL, -self.player_cur_coords[0]+int(VISIBLE_WIDTH/2), -self.player_cur_coords[1]+int(VISIBLE_HEIGHT/2))
         self.movement_handler()
 
     def render_canvas_map(self):
@@ -61,30 +74,43 @@ class TkEngine(tk.Frame):
                                              outline=outline_color, width=width, fill=color, tag=tag)
 
     def put_player_on_map(self):
-        player_coords = (15, 15)  # test
+        player_coords = self.player_cur_coords
         _mapping = MAPPING['@']
         tag = _mapping['tag']
         color = _mapping['color']
         size = _mapping['size']
-        self.canvas.create_rectangle(player_coords[0]*size, player_coords[1]*size,
-                                     (player_coords[0]+1)*size-1, (player_coords[1]+1)*size-1,
+        self.canvas.create_rectangle(player_coords[0], player_coords[1],
+                                     player_coords[0]+size-1, player_coords[1]+size-1,
                                      outline='#111', fill=color, tag=tag)
 
     def update(self):
+        self.timer()
         self.apply_shadows()
         self.master.update_idletasks()
         self.master.update()
 
+    def timer(self):
+        cur_time = time.time()
+        if cur_time - self.last_time > self.timeout:
+            self.last_time = cur_time
+            self.light_radius -= 1
+            self.create_light('player', 'main_light')
+
     def create_light(self, obj, tag):
+        self.canvas.delete(tag)
+
         lr = WIDTH - self.light_radius
         w = WIDTH*2
         _w = w - lr
+
         coords = self.canvas.coords(obj)
+
         center_x = sum(coords[::2])/2
         center_y = sum(coords[1::2])/2
-        self.canvas.create_arc(center_x-_w, center_y-_w, center_x+_w, center_x+_w,
+
+        self.canvas.create_arc(center_x-_w, center_y-_w, center_x+_w, center_y+_w,
                                start=0, extent=359, style=tk.ARC, outline="#111", width=w, tag=tag)
-        self.canvas.create_arc(center_x-_w, center_y-_w, center_x+_w, center_x+_w,
+        self.canvas.create_arc(center_x-_w, center_y-_w, center_x+_w, center_y+_w,
                                start=359, extent=1, style=tk.ARC, outline="#111", width=w, tag=tag)
 
     def apply_shadows(self):
@@ -166,8 +192,8 @@ class TkEngine(tk.Frame):
 
                     if next_x < 0 or next_y < 0:
                         collides['map_border'] = [-min(xs) if x_diff else 0, -min(ys) if y_diff else 0]
-                    elif next_x > WIDTH or next_y > HEIGHT:
-                        collides['map_border'] = [WIDTH-max(xs) if x_diff else 0, HEIGHT-max(ys) if y_diff else 0]
+                    elif next_x > VISIBLE_WIDTH or next_y > VISIBLE_HEIGHT:
+                        collides['map_border'] = [VISIBLE_WIDTH-max(xs) if x_diff else 0, VISIBLE_HEIGHT-max(ys) if y_diff else 0]
                     else:
                         if coords[0] < next_x < coords[2] and coords[1] < next_y < coords[3]:
                             if x_diff < 0:
@@ -211,6 +237,22 @@ class TkEngine(tk.Frame):
             coords = collide_objects.get('map_border', [0, 0])
         else:
             coords = [0, 0]
+
+        if obj == 'player':
+            self.player_cur_coords = [self.player_cur_coords[0]+coords[0], self.player_cur_coords[1]+coords[1]]
+            _coords = self.canvas.coords('player')
+
+            if self.camera_borders < self.player_cur_coords[0] < WIDTH-self.camera_borders and x_diff:
+                center_x = sum(_coords[::2]) / 2
+                ms = move_step * x_diff
+                if not (self.camera_borders < center_x+ms < VISIBLE_WIDTH - self.camera_borders):
+                    self.canvas.move(tk.ALL, -coords[0], -coords[1])
+
+            if self.camera_borders < self.player_cur_coords[1] < HEIGHT-self.camera_borders and y_diff:
+                center_y = sum(_coords[1::2]) / 2
+                ms = move_step * y_diff
+                if not (self.camera_borders < center_y+ms < VISIBLE_HEIGHT - self.camera_borders):
+                    self.canvas.move(tk.ALL, -coords[0], -coords[1])
 
         self.canvas.move(obj, coords[0], coords[1])
         if lightning_obj:
