@@ -22,7 +22,7 @@ All you need are Tkinter (I've been using Tk 8.6, but it also may be working wit
 <details><summary>Update 2</summary>
 <p>
   
-![Alt Text](https://raw.githubusercontent.com/simbi0nts/Wrrr-I-don-t-know/master/preview/prewiew2.gif)
+![Alt Text](https://raw.githubusercontent.com/simbi0nts/Wrrr-I-don-t-know/master/preview/preview2.gif)
 
 </p>
 </details>
@@ -30,7 +30,7 @@ All you need are Tkinter (I've been using Tk 8.6, but it also may be working wit
 <details><summary>Update 3</summary>
 <p>
   
-![Alt Text](https://raw.githubusercontent.com/simbi0nts/Wrrr-I-don-t-know/master/preview/prewiew3.gif)
+![Alt Text](https://raw.githubusercontent.com/simbi0nts/Wrrr-I-don-t-know/master/preview/preview3.gif)
 
 </p>
 </details>
