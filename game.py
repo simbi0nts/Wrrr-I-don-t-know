@@ -5,26 +5,12 @@ import random
 import time
 import tkinter as tk
 
-from map import MAP as MAPPING
+from map import MAPPING
 import settings as sett
 
 
-# TODO: cleanup (seriously)
-WIDTH = 1000
-HEIGHT = 1000
-
-VISIBLE_WIDTH = 500
-VISIBLE_HEIGHT = 500
-
-CELL_SIZE = MAPPING['1']['size']
-HALF_CELL_SIZE = CELL_SIZE / 2
-
-X_CELLS = int(WIDTH / CELL_SIZE)
-Y_CELLS = int(HEIGHT / CELL_SIZE)
-test_map = [['0' if random.randint(0, 5) and not (x in [1, X_CELLS-1] or y in [1, Y_CELLS-1])
-             else '1' for x in range(X_CELLS)] for y in range(Y_CELLS)]
-
-DIAGONAL_DIRECTIONS = (('UP', 'RIGHT'), ('UP', 'LEFT'), ('DOWN', 'RIGHT'), ('DOWN', 'LEFT'))
+test_map = [['0' if random.randint(0, 5) and not (x in [1, sett.X_CELLS-1] or y in [1, sett.Y_CELLS-1])
+             else '1' for x in range(sett.X_CELLS)] for y in range(sett.Y_CELLS)]
 
 
 class TkEngine(tk.Frame):
@@ -35,46 +21,58 @@ class TkEngine(tk.Frame):
         self.grid()
         frame1 = tk.Frame(self)
         frame1.grid()
-        self.canvas = tk.Canvas(frame1, width=VISIBLE_WIDTH, height=VISIBLE_HEIGHT, bg="white")
+        self.canvas = tk.Canvas(frame1, width=sett.VISIBLE_WIDTH, height=sett.VISIBLE_HEIGHT, bg="white")
         self.canvas.grid(columnspan=3)
         self.canvas.focus_set()
 
-        self.player_start_coords = [int(VISIBLE_WIDTH/MAPPING['@']['size']), int(VISIBLE_HEIGHT/MAPPING['@']['size'])]
-        self.player_cur_coords = [self.player_start_coords[0]+int(WIDTH/2), self.player_start_coords[1]+int(HEIGHT/2)]
-
         self.camera_borders = 150
+
         self.light_radius = 150
-        self.enemy_light_damage = 3
         self.shadow_gap = 0  # = 4 Kinda experimented feature
+
+        self.glitch_enemy_light_damage = 0.25
+        self.glitch_enemy_move_step = 8
+
+        self.smart_enemy_light_damage = 0.5
+        self.smart_enemy_move_step = 2
+
+        self.player_break_time = 8
         self.player_move_step = 5
-        self.enemy_move_step = 10
-        self.player_break_time = 12
+        self.player_start_coords = [int(sett.VISIBLE_WIDTH/MAPPING['@']['size']),
+                                    int(sett.VISIBLE_HEIGHT/MAPPING['@']['size'])]
+        self.player_cur_coords = [self.player_start_coords[0]+int(sett.WIDTH/2),
+                                  self.player_start_coords[1]+int(sett.HEIGHT/2)]
+
         self.sleep_after_move = False
         self.sleep_time = 0.05
 
         self.last_time = time.time()
         self.timeout = 1
+        self.timeout_light_fading = 1
 
     def new_game(self):
-        self.render_canvas_map()
+        self.render_canvas_map(test_map)
         self.put_player_on_map()
-        self.put_enemies_on_map()
+        self.put_enemies_on_map('re', 25)
+        self.put_enemies_on_map('se', 15)
         self.update_lighting(force=True)
         self.move_canvas_on_init()
         self.movement_handler()
 
     def move_canvas_on_init(self):
-        self.canvas.move(tk.ALL, -self.player_cur_coords[0]+int(VISIBLE_WIDTH/2), -self.player_cur_coords[1]+int(VISIBLE_HEIGHT/2))
+        self.canvas.move(tk.ALL, -self.player_cur_coords[0]+int(sett.VISIBLE_WIDTH/2),
+                         -self.player_cur_coords[1]+int(sett.VISIBLE_HEIGHT/2))
 
-    def render_canvas_map(self):
-        for y in range(len(test_map)):
-            for x in range(len(test_map[y])):
-                _mapping = MAPPING[test_map[y][x]]
+    def render_canvas_map(self, _map):
+        for y in range(len(_map)):
+            for x in range(len(_map[y])):
+                _mapping = MAPPING[_map[y][x]]
                 tag = _mapping['tag']
                 color = _mapping['color']
                 outline_color = _mapping.get('outline_color') or color
                 cell_size = _mapping['size']
                 width = _mapping.get('outline_width') or 0
+
                 self.canvas.create_rectangle(x*cell_size, y*cell_size,
                                              (x+1)*cell_size, (y+1)*cell_size,
                                              outline=outline_color, width=width, fill=color, tag=tag)
@@ -85,37 +83,50 @@ class TkEngine(tk.Frame):
         tag = _mapping['tag']
         color = _mapping['color']
         size = _mapping['size']
+        outline_color = _mapping.get('outline_color') or '#111'
+
         self.canvas.create_rectangle(player_coords[0], player_coords[1],
                                      player_coords[0]+size-1, player_coords[1]+size-1,
-                                     outline='#111', fill=color, tag=tag)
+                                     outline=outline_color, fill=color, tag=tag)
 
-    def put_enemies_on_map(self):
-        _mapping = MAPPING['e']
+    def put_enemies_on_map(self, enemy_type_code, _count):
+        _mapping = MAPPING[enemy_type_code]
         tag = _mapping['tag']
         color = _mapping['color']
         size = _mapping['size']
-        for x in range(25):
+
+        _border_delay = 35
+        _another_enemies_delay = size * 4
+        for x in range(_count):
             while True:
                 repeat = False
-                _x, _y = [random.randint(35, WIDTH-35), random.randint(35, HEIGHT-35)]
-                overlaping_items = self.canvas.find_overlapping(_x - size*4, _y - size*4, _x + size*4, _y + size*4)
+                _x, _y = [random.randint(_border_delay, sett.WIDTH-_border_delay),
+                          random.randint(_border_delay, sett.HEIGHT-_border_delay)]
+
+                overlaping_items = self.canvas.find_overlapping(
+                    _x - _another_enemies_delay, _y - _another_enemies_delay,
+                    _x + _another_enemies_delay, _y + _another_enemies_delay)
+
                 for oi in overlaping_items:
-                    e= self.canvas.gettags(oi)[0]
-                    if 'enemy' in self.canvas.gettags(oi)[0]:
+                    if 'smart_enemy' in self.canvas.gettags(oi)[0] or 'glitch_enemy' in self.canvas.gettags(oi)[0]:
                         repeat = True
                         break
+
                 if not repeat:
-                    self.canvas.create_rectangle(_x, _y, _x + size - 1, _y + size - 1, outline='#f66', fill=color, tag=tag)
+                    self.canvas.create_rectangle(_x, _y, _x + size - 1, _y + size - 1,
+                                                 outline='#f66', fill=color, tag=tag)
                     break
 
     def update(self):
-        self.random_enemies_move()
+        # Todo: smart rendering
+        self.glitch_enemies_move()
+        self.smart_enemies_move()
         self.update_lighting()
         self.apply_shadows()
         self.master.update_idletasks()
         self.master.update()
 
-    def random_enemies_move(self):
+    def glitch_enemies_move(self):
         items = self.canvas.find_all()
         moves = {'UP': [0, -1],
                  'DOWN': [0, 1],
@@ -124,26 +135,72 @@ class TkEngine(tk.Frame):
 
         for item in items:
             collide_obj = self.canvas.gettags(item)[0]
-            if collide_obj in ['enemy'] and not random.randint(0, 3):
+            if collide_obj in ['glitch_enemy'] and not random.randint(0, 3):
                 if random.randint(0, 1):
                     move_dir, diff = random.choice(list(moves.items()))
-                    self.move(item, move_dir, diff[0], diff[1], self.player_move_step, 0)
+                    self.move(item, move_dir, diff[0], diff[1], self.glitch_enemy_move_step, 0)
                 else:
-                    for move_dir in random.choice(DIAGONAL_DIRECTIONS):
-                        self.move(item, move_dir, moves[move_dir][0], moves[move_dir][1], self.enemy_move_step, 0)
+                    for move_dir in random.choice(sett.DIAGONAL_DIRECTIONS):
+                        self.move(item, move_dir, moves[move_dir][0], moves[move_dir][1],
+                                  self.glitch_enemy_move_step*0.8, 0)
+
+    def smart_enemies_move(self):
+        items = self.canvas.find_all()
+
+        for item in items:
+            collide_obj = self.canvas.gettags(item)[0]
+            if collide_obj in ['smart_enemy']:
+                coords = self.canvas.coords(item)
+                center_x = sum(coords[::2]) / 2
+                center_y = sum(coords[1::2]) / 2
+
+                lr = self.light_radius
+                near_items = self.canvas.find_overlapping(center_x - lr, center_y - lr, center_x + lr, center_y + lr)
+                for n_item in near_items:
+                    collide_obj = self.canvas.gettags(n_item)[0]
+                    if collide_obj in ['player']:
+                        n_coords = self.canvas.coords(n_item)
+                        n_center_x = sum(n_coords[::2]) / 2
+                        n_center_y = sum(n_coords[1::2]) / 2
+                        diff_x = -(n_center_x-center_x < 0) or int(n_center_x-center_x > 0)
+                        diff_y = -(n_center_y-center_y < 0) or int(n_center_y-center_y > 0)
+                        self.move(item, 'towards_player', 0, diff_y, self.smart_enemy_move_step, 0)
+                        self.move(item, 'towards_player', diff_x, 0, self.smart_enemy_move_step, 0)
+                        break
+
+    def is_objects_collide(self, obj, list_of_colliding_objs):
+        xs = self.canvas.coords(obj)[::2]
+        ys = self.canvas.coords(obj)[1::2]
+
+        items = self.canvas.find_overlapping(xs[0], ys[0], xs[1], ys[1])
+
+        for item in items:
+            obj_name = self.canvas.gettags(item)[0]
+            if obj_name in list_of_colliding_objs:
+                return True, obj_name
+        return False, None
 
     def update_lighting(self, force=False):
+        is_hurt, obj = self.is_objects_collide('player', ['glitch_enemy', 'smart_enemy'])
+        if is_hurt:
+            if obj == 'glitch_enemy':
+                self.light_radius -= self.glitch_enemy_light_damage
+            if obj == 'smart_enemy':
+                self.light_radius -= self.smart_enemy_light_damage
+            force = True
+
         cur_time = time.time()
         if cur_time - self.last_time > self.timeout or force:
             self.last_time = cur_time
-            self.light_radius -= 1
+            self.light_radius -= self.timeout_light_fading
             self.create_light('player', 'main_light')
 
     def create_light(self, obj, tag):
         self.canvas.delete(tag)
+        shadow_color = '#111'
 
-        lr = WIDTH - self.light_radius
-        w = WIDTH*2
+        lr = sett.WIDTH - self.light_radius
+        w = sett.WIDTH*2
         _w = w - lr
 
         coords = self.canvas.coords(obj)
@@ -152,12 +209,13 @@ class TkEngine(tk.Frame):
         center_y = sum(coords[1::2])/2
 
         self.canvas.create_arc(center_x-_w, center_y-_w, center_x+_w, center_y+_w,
-                               start=0, extent=359, style=tk.ARC, outline="#111", width=w, tag=tag)
+                               start=0, extent=180, style=tk.ARC, outline=shadow_color, width=w, tag=tag)
         self.canvas.create_arc(center_x-_w, center_y-_w, center_x+_w, center_y+_w,
-                               start=359, extent=1, style=tk.ARC, outline="#111", width=w, tag=tag)
+                               start=180, extent=180, style=tk.ARC, outline=shadow_color, width=w, tag=tag)
 
     def apply_shadows(self):
         self.canvas.delete('shadow')
+        shadow_color = '#111'
 
         lr = self.light_radius
         coords = self.canvas.coords('player')
@@ -214,7 +272,7 @@ class TkEngine(tk.Frame):
                     center = center_x if center != center_x else center_y
                     points.append(center - lr * (center - coord))
 
-                self.canvas.create_polygon(points, fill='#111', tag='shadow')
+                self.canvas.create_polygon(points, fill=shadow_color, tag='shadow')
 
     def get_next_step_collide_objects(self, obj, x_diff, y_diff):
         """ Looking for next-step collides and distance between them and object """
@@ -235,8 +293,9 @@ class TkEngine(tk.Frame):
 
                     if next_x < 0 or next_y < 0:
                         collides['map_border'] = [-min(xs) if x_diff else 0, -min(ys) if y_diff else 0]
-                    elif next_x > VISIBLE_WIDTH or next_y > VISIBLE_HEIGHT:
-                        collides['map_border'] = [VISIBLE_WIDTH-max(xs) if x_diff else 0, VISIBLE_HEIGHT-max(ys) if y_diff else 0]
+                    elif next_x > sett.VISIBLE_WIDTH or next_y > sett.VISIBLE_HEIGHT:
+                        collides['map_border'] = [sett.VISIBLE_WIDTH-max(xs) if x_diff else 0,
+                                                  sett.VISIBLE_HEIGHT-max(ys) if y_diff else 0]
                     else:
                         if coords[0] < next_x < coords[2] and coords[1] < next_y < coords[3]:
                             if x_diff < 0:
@@ -252,7 +311,7 @@ class TkEngine(tk.Frame):
 
     @staticmethod
     def is_enemy(collide_objects):
-        return 'enemy' in collide_objects
+        return 'smart_enemy' in collide_objects or 'glitch_enemy' in collide_objects
 
     @staticmethod
     def is_map_border(collide_objects):
@@ -262,7 +321,7 @@ class TkEngine(tk.Frame):
     def is_wall(collide_objects):
         return 'wall' in collide_objects
 
-    def move(self, obj, action, x_diff, y_diff, move_step=CELL_SIZE, break_time=50, lightning_obj=None):
+    def move(self, obj, action, x_diff, y_diff, move_step=sett.CELL_SIZE, break_time=50, lightning_obj=None):
         """ The movement logic is only accepted for small steps movement
             (less than wall size). Not critical. But unacceptable.
             TODO:
@@ -283,12 +342,10 @@ class TkEngine(tk.Frame):
             coords = collide_objects.get('wall', [0, 0])
         elif is_border_ahead:
             coords = collide_objects.get('map_border', [0, 0])
-        elif obj == 'enemy' and is_enemy_ahead:
-            coords = [move_step*x_diff, move_step*y_diff]
         elif obj == 'player' and is_enemy_ahead:
             coords = [move_step*x_diff, move_step*y_diff]
-            self.light_radius -= self.enemy_light_damage
-            self.update_lighting(force=True)
+        elif type(obj) == int and self.canvas.gettags(obj)[0] in ['smart_enemy', 'glitch_enemy'] and is_enemy_ahead:
+            coords = [0, 0]
         else:
             coords = [0, 0]
 
@@ -296,16 +353,16 @@ class TkEngine(tk.Frame):
             self.player_cur_coords = [self.player_cur_coords[0]+coords[0], self.player_cur_coords[1]+coords[1]]
             _coords = self.canvas.coords('player')
 
-            if self.camera_borders < self.player_cur_coords[0] < WIDTH-self.camera_borders and x_diff:
+            if self.camera_borders < self.player_cur_coords[0] < sett.WIDTH-self.camera_borders and x_diff:
                 center_x = sum(_coords[::2]) / 2
                 ms = move_step * x_diff
-                if not (self.camera_borders < center_x+ms < VISIBLE_WIDTH - self.camera_borders):
+                if not (self.camera_borders < center_x+ms < sett.VISIBLE_WIDTH - self.camera_borders):
                     self.canvas.move(tk.ALL, -coords[0], -coords[1])
 
-            if self.camera_borders < self.player_cur_coords[1] < HEIGHT-self.camera_borders and y_diff:
+            if self.camera_borders < self.player_cur_coords[1] < sett.HEIGHT-self.camera_borders and y_diff:
                 center_y = sum(_coords[1::2]) / 2
                 ms = move_step * y_diff
-                if not (self.camera_borders < center_y+ms < VISIBLE_HEIGHT - self.camera_borders):
+                if not (self.camera_borders < center_y+ms < sett.VISIBLE_HEIGHT - self.camera_borders):
                     self.canvas.move(tk.ALL, -coords[0], -coords[1])
 
         self.canvas.move(obj, coords[0], coords[1])
@@ -314,7 +371,7 @@ class TkEngine(tk.Frame):
         self.canvas.after(break_time)
 
     def is_diagonal_move(self):
-        for dir1, dir2 in DIAGONAL_DIRECTIONS:
+        for dir1, dir2 in sett.DIAGONAL_DIRECTIONS:
             if self.keyboard_is_pressed_from_list(sett.MOVEMENT_KEYS[dir1]) and \
                     self.keyboard_is_pressed_from_list(sett.MOVEMENT_KEYS[dir2]):
                 return True
@@ -334,12 +391,16 @@ class TkEngine(tk.Frame):
 
                 if self.keyboard_is_pressed_from_list(sett.MOVEMENT_KEYS['UP']):
                     self.move('player', 'UP', 0, -1, self.player_move_step, break_time, 'main_light')
+
                 if self.keyboard_is_pressed_from_list(sett.MOVEMENT_KEYS['DOWN']):
                     self.move('player', 'DOWN', 0, 1, self.player_move_step, break_time, 'main_light')
+
                 if self.keyboard_is_pressed_from_list(sett.MOVEMENT_KEYS['LEFT']):
                     self.move('player', 'LEFT', -1, 0, self.player_move_step, break_time, 'main_light')
+
                 if self.keyboard_is_pressed_from_list(sett.MOVEMENT_KEYS['RIGHT']):
                     self.move('player', 'RIGHT', 1, 0, self.player_move_step, break_time, 'main_light')
+
             except Exception as e:
                 break
 
