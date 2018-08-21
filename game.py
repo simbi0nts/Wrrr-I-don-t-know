@@ -72,12 +72,7 @@ class TkEngine(tk.Frame):
         self.put_enemies_on_map('re', _count=10)
         self.put_enemies_on_map('se', _count=15)
         self.update_lighting(force=True)
-        self.move_canvas_on_init()
         self.movement_handler()
-
-    def move_canvas_on_init(self):
-        self.canvas.move(tk.ALL, -self.player_cur_coords[0] + int(sett.VISIBLE_WIDTH / 2),
-                         -self.player_cur_coords[1] + int(sett.VISIBLE_HEIGHT / 2))
 
     def render_canvas_map(self, _map):
         for y in range(len(_map)):
@@ -122,25 +117,25 @@ class TkEngine(tk.Frame):
         color = _mapping['color']
         size = _mapping['size']
 
-        _border_delay = 35
+        border_delay = 35
 
-        for x in range(_count):
+        for _i in range(_count):
             while True:
                 repeat = False
-                _x, _y = [random.randint(_border_delay, sett.WIDTH - _border_delay),
-                          random.randint(_border_delay, sett.HEIGHT - _border_delay)]
+                x, y = [random.randint(border_delay, sett.WIDTH - border_delay),
+                        random.randint(border_delay, sett.HEIGHT - border_delay)]
 
                 for obj in self.objects:
-                    if obj['x'] - obj['size'] / 4 <= _x <= obj['x'] + obj['size'] / 4 and \
-                       obj['y'] - obj['size'] / 4 <= _y <= obj['y'] + obj['size'] / 4 and \
+                    if obj['x'] - obj['size'] / 4 <= x <= obj['x'] + obj['size'] / 4 and \
+                       obj['y'] - obj['size'] / 4 <= y <= obj['y'] + obj['size'] / 4 and \
                        obj['tag'] in ['wall', 'smart_enemy', 'glitch_enemy']:
                         repeat = True
                         break
 
                 if not repeat:
                     self.objects.append({
-                        'x': _x + size / 2,
-                        'y': _y + size / 2,
+                        'x': x + size / 2,
+                        'y': y + size / 2,
                         'tag': tag,
                         'size': size,
                         'fill': color,
@@ -193,7 +188,7 @@ class TkEngine(tk.Frame):
 
         for obj in self.objects:
             if obj['tag'] in ['glitch_enemy'] and not random.randint(0, 3):
-                if random.randint(0, 1):
+                if random.randint(0, 3):
                     move_dir, diff = random.choice(list(moves.items()))
                     self.move(obj, move_dir, diff[0], diff[1], self.glitch_enemy_move_step, 0)
                 else:
@@ -202,20 +197,18 @@ class TkEngine(tk.Frame):
                                   self.glitch_enemy_move_step * 0.8, 0)
 
     def smart_enemies_move(self):
+        lr = self.light_radius
+        sp = self.player_obj
+        
         for obj in self.objects:
             if obj['tag'] in ['smart_enemy']:
-                center_x = obj['x']
-                center_y = obj['y']
-
-                lr = self.light_radius
-                sp = self.player_obj
-                is_player_nearby = center_x - lr < sp['x'] < center_x + lr and center_y - lr < sp['y'] < center_y + lr
+                is_player_nearby = \
+                    obj['x'] - lr < sp['x'] < obj['x'] + lr and \
+                    obj['y'] - lr < sp['y'] < obj['y'] + lr
 
                 if is_player_nearby:
-                    n_center_x = sp['x']
-                    n_center_y = sp['y']
-                    diff_x = -(n_center_x - center_x < 0) or int(n_center_x - center_x > 0)
-                    diff_y = -(n_center_y - center_y < 0) or int(n_center_y - center_y > 0)
+                    diff_x = -(sp['x'] - obj['x'] < 0) or int(sp['x'] - obj['x'] > 0)
+                    diff_y = -(sp['y'] - obj['y'] < 0) or int(sp['y'] - obj['y'] > 0)
                     self.move(obj, 'towards_player', 0, diff_y, self.smart_enemy_move_step, 0)
                     self.move(obj, 'towards_player', diff_x, 0, self.smart_enemy_move_step, 0)
                     break
@@ -229,9 +222,8 @@ class TkEngine(tk.Frame):
         ]
 
         for item in items:
-            obj_name = item['tag']
-            if obj_name in list_of_colliding_objs:
-                return True, obj_name
+            if item['tag'] in list_of_colliding_objs:
+                return True, item['tag']
         return False, None
 
     def update_lighting(self, force=False):
@@ -423,7 +415,6 @@ class TkEngine(tk.Frame):
 
         elif is_wall_ahead:
             coords = collide_objects.get('wall', [0, 0])
-
         elif is_border_ahead:
             coords = collide_objects.get('map_border', [0, 0])
 
@@ -432,10 +423,8 @@ class TkEngine(tk.Frame):
                 move_step * x_diff,
                 move_step * y_diff
             ]
-
         elif obj['tag'] in ['smart_enemy', 'glitch_enemy'] and is_enemy_ahead:
             coords = [0, 0]
-
         else:
             coords = [0, 0]
 
@@ -459,7 +448,6 @@ class TkEngine(tk.Frame):
                 if not (self.camera_borders < center_y + ms < sett.VISIBLE_HEIGHT - self.camera_borders):
                     self.map_shift[0] -= coords[0]
                     self.map_shift[1] -= coords[1]
-                    # self.canvas.move(tk.ALL, -coords[0]*5, -coords[1]*5)
 
         obj['x'] += coords[0]
         obj['y'] += coords[1]
