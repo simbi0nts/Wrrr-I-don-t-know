@@ -51,7 +51,8 @@ All you need are Tkinter (I've been using Tk 8.6, but it also may be working wit
 
 <details><summary>Update 5</summary>
 <p>
-  quite the same, but
-  + now there is rendering
+quite the same, but
+</br> + now there is rendering
+  
 </p>
 </details>
