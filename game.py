@@ -9,8 +9,11 @@ from map import MAPPING
 import settings as sett
 
 
-test_map = [['0' if random.randint(0, 5) and not (x in [1, sett.X_CELLS-1] or y in [1, sett.Y_CELLS-1])
-             else '1' for x in range(sett.X_CELLS)] for y in range(sett.Y_CELLS)]
+test_map = [
+    ['0' if random.randint(0, 5) and not (x in [1, sett.X_CELLS-1] or y in [1, sett.Y_CELLS-1]) else '1'
+     for x in range(sett.X_CELLS)
+     ] for y in range(sett.Y_CELLS)
+]
 
 
 class TkEngine(tk.Frame):
@@ -38,10 +41,15 @@ class TkEngine(tk.Frame):
 
         self.player_break_time = 8
         self.player_move_step = 5
-        self.player_start_coords = [int(sett.VISIBLE_WIDTH/MAPPING['@']['size']),
-                                    int(sett.VISIBLE_HEIGHT/MAPPING['@']['size'])]
-        self.player_cur_coords = [self.player_start_coords[0]+int(sett.WIDTH/2),
-                                  self.player_start_coords[1]+int(sett.HEIGHT/2)]
+
+        self.player_start_coords = [
+            int(sett.VISIBLE_WIDTH / MAPPING['@']['size']),
+            int(sett.VISIBLE_HEIGHT / MAPPING['@']['size'])
+        ]
+        self.player_cur_coords = [
+            self.player_start_coords[0] + int(sett.WIDTH / 2),
+            self.player_start_coords[1] + int(sett.HEIGHT / 2)
+        ]
 
         self.sleep_after_move = False
         self.sleep_time = 0.05
@@ -50,18 +58,26 @@ class TkEngine(tk.Frame):
         self.timeout = 1
         self.timeout_light_fading = 1
 
+        self.objects = []
+        self.player_obj = {}
+
+        self.map_shift = [
+            -self.player_cur_coords[0] + int(sett.VISIBLE_WIDTH / 2),
+            -self.player_cur_coords[1] + int(sett.VISIBLE_HEIGHT / 2)
+        ]
+
     def new_game(self):
         self.render_canvas_map(test_map)
-        self.put_player_on_map()
-        self.put_enemies_on_map('re', 25)
-        self.put_enemies_on_map('se', 15)
+        self.create_player_obj()
+        self.put_enemies_on_map('re', _count=10)
+        self.put_enemies_on_map('se', _count=15)
         self.update_lighting(force=True)
         self.move_canvas_on_init()
         self.movement_handler()
 
     def move_canvas_on_init(self):
-        self.canvas.move(tk.ALL, -self.player_cur_coords[0]+int(sett.VISIBLE_WIDTH/2),
-                         -self.player_cur_coords[1]+int(sett.VISIBLE_HEIGHT/2))
+        self.canvas.move(tk.ALL, -self.player_cur_coords[0] + int(sett.VISIBLE_WIDTH / 2),
+                         -self.player_cur_coords[1] + int(sett.VISIBLE_HEIGHT / 2))
 
     def render_canvas_map(self, _map):
         for y in range(len(_map)):
@@ -73,11 +89,17 @@ class TkEngine(tk.Frame):
                 cell_size = _mapping['size']
                 width = _mapping.get('outline_width') or 0
 
-                self.canvas.create_rectangle(x*cell_size, y*cell_size,
-                                             (x+1)*cell_size, (y+1)*cell_size,
-                                             outline=outline_color, width=width, fill=color, tag=tag)
+                self.objects.append({
+                    'tag': tag,
+                    'x': (x * cell_size + (cell_size / 2)),
+                    'y': (y * cell_size + (cell_size / 2)),
+                    'size': cell_size,
+                    'fill': color,
+                    'outline': outline_color,
+                    'width': width
+                })
 
-    def put_player_on_map(self):
+    def create_player_obj(self):
         player_coords = self.player_cur_coords
         _mapping = MAPPING['@']
         tag = _mapping['tag']
@@ -85,40 +107,49 @@ class TkEngine(tk.Frame):
         size = _mapping['size']
         outline_color = _mapping.get('outline_color') or '#111'
 
-        self.canvas.create_rectangle(player_coords[0], player_coords[1],
-                                     player_coords[0]+size-1, player_coords[1]+size-1,
-                                     outline=outline_color, fill=color, tag=tag)
+        self.player_obj = {
+            'x': player_coords[0] + size / 2,
+            'y': player_coords[1] + size / 2,
+            'size': size,
+            'outline': outline_color,
+            'fill': color,
+            'tag': tag,
+        }
 
-    def put_enemies_on_map(self, enemy_type_code, _count):
+    def put_enemies_on_map(self, enemy_type_code, _count=10):
         _mapping = MAPPING[enemy_type_code]
         tag = _mapping['tag']
         color = _mapping['color']
         size = _mapping['size']
 
         _border_delay = 35
-        _another_enemies_delay = size * 4
+
         for x in range(_count):
             while True:
                 repeat = False
-                _x, _y = [random.randint(_border_delay, sett.WIDTH-_border_delay),
-                          random.randint(_border_delay, sett.HEIGHT-_border_delay)]
+                _x, _y = [random.randint(_border_delay, sett.WIDTH - _border_delay),
+                          random.randint(_border_delay, sett.HEIGHT - _border_delay)]
 
-                overlaping_items = self.canvas.find_overlapping(
-                    _x - _another_enemies_delay, _y - _another_enemies_delay,
-                    _x + _another_enemies_delay, _y + _another_enemies_delay)
-
-                for oi in overlaping_items:
-                    if 'smart_enemy' in self.canvas.gettags(oi)[0] or 'glitch_enemy' in self.canvas.gettags(oi)[0]:
+                for obj in self.objects:
+                    if obj['x'] - obj['size'] / 4 <= _x <= obj['x'] + obj['size'] / 4 and \
+                       obj['y'] - obj['size'] / 4 <= _y <= obj['y'] + obj['size'] / 4 and \
+                       obj['tag'] in ['wall', 'smart_enemy', 'glitch_enemy']:
                         repeat = True
                         break
 
                 if not repeat:
-                    self.canvas.create_rectangle(_x, _y, _x + size - 1, _y + size - 1,
-                                                 outline='#f66', fill=color, tag=tag)
+                    self.objects.append({
+                        'x': _x + size / 2,
+                        'y': _y + size / 2,
+                        'tag': tag,
+                        'size': size,
+                        'fill': color,
+                        'outline': '#f66'
+                    })
                     break
 
     def update(self):
-        # Todo: smart rendering
+        self.render()
         self.glitch_enemies_move()
         self.smart_enemies_move()
         self.update_lighting()
@@ -126,62 +157,85 @@ class TkEngine(tk.Frame):
         self.master.update_idletasks()
         self.master.update()
 
-    def glitch_enemies_move(self):
-        items = self.canvas.find_all()
-        moves = {'UP': [0, -1],
-                 'DOWN': [0, 1],
-                 'LEFT': [-1, 0],
-                 'RIGHT': [1, 0]}
+    def render(self):
+        self.canvas.delete(tk.ALL)
 
-        for item in items:
-            collide_obj = self.canvas.gettags(item)[0]
-            if collide_obj in ['glitch_enemy'] and not random.randint(0, 3):
+        _mapping = MAPPING['@']
+        size = _mapping['size']
+
+        pl_c = self.player_cur_coords
+        pl_c_x = pl_c[0] + size / 2
+        pl_c_y = pl_c[1] + size / 2
+        lrq = (self.light_radius + 10) ** 2
+
+        xms = self.map_shift[0]
+        yms = self.map_shift[1]
+
+        for obj in self.objects:
+            if (obj['x'] - pl_c_x) ** 2 + (obj['y'] - pl_c_y) ** 2 < lrq:
+                self.canvas.create_rectangle(obj['x'] - obj['size'] / 2 + xms, obj['y'] - obj['size'] / 2 + yms,
+                                             obj['x'] + obj['size'] / 2 + xms, obj['y'] + obj['size'] / 2 + yms,
+                                             outline=obj['outline'], fill=obj['fill'], tag=obj['tag'],
+                                             width=obj.get('width', 0))
+        self.create_player_obj()
+        sp = self.player_obj
+        self.canvas.create_rectangle(sp['x'] - sp['size'] / 2 + xms, sp['y'] - sp['size'] / 2 + yms,
+                                     sp['x'] + sp['size'] / 2 + xms, sp['y'] + sp['size'] / 2 + yms,
+                                     outline=sp['outline'], fill=sp['fill'], tag=sp['tag'])
+
+    def glitch_enemies_move(self):
+        moves = {
+            'UP': [0, -1],
+            'DOWN': [0, 1],
+            'LEFT': [-1, 0],
+            'RIGHT': [1, 0]
+        }
+
+        for obj in self.objects:
+            if obj['tag'] in ['glitch_enemy'] and not random.randint(0, 3):
                 if random.randint(0, 1):
                     move_dir, diff = random.choice(list(moves.items()))
-                    self.move(item, move_dir, diff[0], diff[1], self.glitch_enemy_move_step, 0)
+                    self.move(obj, move_dir, diff[0], diff[1], self.glitch_enemy_move_step, 0)
                 else:
                     for move_dir in random.choice(sett.DIAGONAL_DIRECTIONS):
-                        self.move(item, move_dir, moves[move_dir][0], moves[move_dir][1],
-                                  self.glitch_enemy_move_step*0.8, 0)
+                        self.move(obj, move_dir, moves[move_dir][0], moves[move_dir][1],
+                                  self.glitch_enemy_move_step * 0.8, 0)
 
     def smart_enemies_move(self):
-        items = self.canvas.find_all()
-
-        for item in items:
-            collide_obj = self.canvas.gettags(item)[0]
-            if collide_obj in ['smart_enemy']:
-                coords = self.canvas.coords(item)
-                center_x = sum(coords[::2]) / 2
-                center_y = sum(coords[1::2]) / 2
+        for obj in self.objects:
+            if obj['tag'] in ['smart_enemy']:
+                center_x = obj['x']
+                center_y = obj['y']
 
                 lr = self.light_radius
-                near_items = self.canvas.find_overlapping(center_x - lr, center_y - lr, center_x + lr, center_y + lr)
-                for n_item in near_items:
-                    collide_obj = self.canvas.gettags(n_item)[0]
-                    if collide_obj in ['player']:
-                        n_coords = self.canvas.coords(n_item)
-                        n_center_x = sum(n_coords[::2]) / 2
-                        n_center_y = sum(n_coords[1::2]) / 2
-                        diff_x = -(n_center_x-center_x < 0) or int(n_center_x-center_x > 0)
-                        diff_y = -(n_center_y-center_y < 0) or int(n_center_y-center_y > 0)
-                        self.move(item, 'towards_player', 0, diff_y, self.smart_enemy_move_step, 0)
-                        self.move(item, 'towards_player', diff_x, 0, self.smart_enemy_move_step, 0)
-                        break
+                sp = self.player_obj
+                is_player_nearby = center_x - lr < sp['x'] < center_x + lr and center_y - lr < sp['y'] < center_y + lr
+
+                if is_player_nearby:
+                    n_center_x = sp['x']
+                    n_center_y = sp['y']
+                    diff_x = -(n_center_x - center_x < 0) or int(n_center_x - center_x > 0)
+                    diff_y = -(n_center_y - center_y < 0) or int(n_center_y - center_y > 0)
+                    self.move(obj, 'towards_player', 0, diff_y, self.smart_enemy_move_step, 0)
+                    self.move(obj, 'towards_player', diff_x, 0, self.smart_enemy_move_step, 0)
+                    break
 
     def is_objects_collide(self, obj, list_of_colliding_objs):
-        xs = self.canvas.coords(obj)[::2]
-        ys = self.canvas.coords(obj)[1::2]
+        xs = [obj['x'] - obj['size'] / 2, obj['x'] + obj['size'] / 2]
+        ys = [obj['y'] - obj['size'] / 2, obj['y'] + obj['size'] / 2]
 
-        items = self.canvas.find_overlapping(xs[0], ys[0], xs[1], ys[1])
+        items = [
+            itm for itm in self.objects if xs[0] < itm['x'] < xs[1] and ys[0] < itm['y'] < ys[1]
+        ]
 
         for item in items:
-            obj_name = self.canvas.gettags(item)[0]
+            obj_name = item['tag']
             if obj_name in list_of_colliding_objs:
                 return True, obj_name
         return False, None
 
     def update_lighting(self, force=False):
-        is_hurt, obj = self.is_objects_collide('player', ['glitch_enemy', 'smart_enemy'])
+        is_hurt, obj = self.is_objects_collide(self.player_obj, ['glitch_enemy', 'smart_enemy'])
         if is_hurt:
             if obj == 'glitch_enemy':
                 self.light_radius -= self.glitch_enemy_light_damage
@@ -193,24 +247,24 @@ class TkEngine(tk.Frame):
         if cur_time - self.last_time > self.timeout or force:
             self.last_time = cur_time
             self.light_radius -= self.timeout_light_fading
-            self.create_light('player', 'main_light')
+        self.create_light('player', 'main_light')
 
     def create_light(self, obj, tag):
         self.canvas.delete(tag)
         shadow_color = '#111'
 
         lr = sett.WIDTH - self.light_radius
-        w = sett.WIDTH*2
+        w = sett.WIDTH * 2
         _w = w - lr
 
         coords = self.canvas.coords(obj)
 
-        center_x = sum(coords[::2])/2
-        center_y = sum(coords[1::2])/2
+        center_x = sum(coords[::2]) / 2
+        center_y = sum(coords[1::2]) / 2
 
-        self.canvas.create_arc(center_x-_w, center_y-_w, center_x+_w, center_y+_w,
+        self.canvas.create_arc(center_x - _w, center_y - _w, center_x + _w, center_y + _w,
                                start=0, extent=180, style=tk.ARC, outline=shadow_color, width=w, tag=tag)
-        self.canvas.create_arc(center_x-_w, center_y-_w, center_x+_w, center_y+_w,
+        self.canvas.create_arc(center_x - _w, center_y - _w, center_x + _w, center_y + _w,
                                start=180, extent=180, style=tk.ARC, outline=shadow_color, width=w, tag=tag)
 
     def apply_shadows(self):
@@ -219,53 +273,63 @@ class TkEngine(tk.Frame):
 
         lr = self.light_radius
         coords = self.canvas.coords('player')
-        center_x = sum(coords[::2])/2
-        center_y = sum(coords[1::2])/2
+        center_x = sum(coords[::2]) / 2
+        center_y = sum(coords[1::2]) / 2
 
         sg = self.shadow_gap
 
-        items = self.canvas.find_overlapping(center_x-lr, center_y-lr, center_x+lr, center_y+lr)
+        xms = self.map_shift[0]
+        yms = self.map_shift[1]
+
+        items = [
+            itm for itm in self.objects if
+            center_x - lr < itm['x'] + xms < center_x + lr and
+            center_y - lr < itm['y'] + yms < center_y + lr
+        ]
+
         for item in items:
-            collide_obj = self.canvas.gettags(item)[0]
+            collide_obj = item['tag']
             points = []
             if collide_obj in ['wall']:
                 ''' That's where the fun begins 
                     Notice, that order of points is matter
                 '''
-                x1, y1, x2, y2 = self.canvas.coords(item)
+                x1, y1, x2, y2 = [
+                    item['x'] - item['size'] / 2 + xms, item['y'] - item['size'] / 2 + yms,
+                    item['x'] + item['size'] / 2 + xms, item['y'] + item['size'] / 2 + yms
+                ]
 
                 # upper-left segment
                 if x2 < center_x and y2 < center_y:
-                    points = [x1, y2, x2-sg, y2-sg, x2, y1]
+                    points = [x1, y2, x2 - sg, y2 - sg, x2, y1]
 
                 # upper-right segment
                 if x1 > center_x and y2 < center_y:
-                    points = [x1, y1, x1+sg, y2-sg, x2, y2]
+                    points = [x1, y1, x1 + sg, y2 - sg, x2, y2]
 
                 # lower-left segment
                 if x2 < center_x and y2 > center_y:
-                    points = [x2, y2, x2-sg, y1+sg, x1, y1]
+                    points = [x2, y2, x2 - sg, y1 + sg, x1, y1]
 
                 # lower-right segment
                 if x1 > center_x and y2 > center_y:
-                    points = [x2, y1, x1+sg, y1+sg, x1, y2]
-
+                    points = [x2, y1, x1 + sg, y1 + sg, x1, y2]
 
                 # above
                 if x1 <= center_x <= x2 and y2 <= center_y:
-                    points = [x1, y2-sg, x2, y2-sg]
+                    points = [x1, y2 - sg, x2, y2 - sg]
 
                 # under
                 if x1 <= center_x <= x2 and y1 >= center_y:
-                    points = [x2, y1+sg, x1, y1+sg]
+                    points = [x2, y1 + sg, x1, y1 + sg]
 
                 # left
                 if x2 <= center_x and y1 <= center_y <= y2:
-                    points = [x2-sg, y2, x2-sg, y1]
+                    points = [x2 - sg, y2, x2 - sg, y1]
 
                 # right
                 if x2 >= center_x and y1 <= center_y <= y2:
-                    points = [x1+sg, y1, x1+sg, y2]
+                    points = [x1 + sg, y1, x1 + sg, y2]
 
                 center = None
                 for coord in points[-2:] + points[:2]:
@@ -277,25 +341,48 @@ class TkEngine(tk.Frame):
     def get_next_step_collide_objects(self, obj, x_diff, y_diff):
         """ Looking for next-step collides and distance between them and object """
 
-        collides = dict()
-        xs = self.canvas.coords(obj)[::2]
-        ys = self.canvas.coords(obj)[1::2]
+        def is_near_and_overlaping(xs, ys, itm):
+            center_x = sum(xs) / 2
+            center_y = sum(ys) / 2
+            m_diff = max(abs(x_diff), abs(y_diff)) ** 2
+            if abs(center_x - itm['x']) > m_diff or abs(center_y - itm['y']) > m_diff:
+                return False
 
-        items = self.canvas.find_overlapping(xs[0]+x_diff, ys[0]+y_diff, xs[1]+x_diff, ys[1]+y_diff)
+            for x in xs:
+                for y in ys:
+                    if itm['x'] - itm['size'] / 2 <= x + x_diff <= itm['x'] + itm['size'] / 2 and \
+                       itm['y'] - itm['size'] / 2 <= y + y_diff <= itm['y'] + itm['size'] / 2:
+                        return True
+            return False
+
+        collides = dict()
+        xs = [obj['x'] - obj['size'] / 2, obj['x'] + obj['size'] / 2]
+        ys = [obj['y'] - obj['size'] / 2, obj['y'] + obj['size'] / 2]
+
+        items = [itm for itm in self.objects if is_near_and_overlaping(xs, ys, itm)]
 
         for item in items:
-            collide_obj = self.canvas.gettags(item)[0]
-            coords = self.canvas.coords(item)
+            collide_obj = item['tag']
+            coords = [
+                item['x'] - item['size'] / 2, item['y'] - item['size'] / 2,
+                item['x'] + item['size'] / 2, item['y'] + item['size'] / 2
+            ]
 
             for _x in xs:
                 for _y in ys:
                     next_x, next_y = _x + x_diff, _y + y_diff
 
                     if next_x < 0 or next_y < 0:
-                        collides['map_border'] = [-min(xs) if x_diff else 0, -min(ys) if y_diff else 0]
-                    elif next_x > sett.VISIBLE_WIDTH or next_y > sett.VISIBLE_HEIGHT:
-                        collides['map_border'] = [sett.VISIBLE_WIDTH-max(xs) if x_diff else 0,
-                                                  sett.VISIBLE_HEIGHT-max(ys) if y_diff else 0]
+                        collides['map_border'] = [
+                            -min(xs) if x_diff else 0, -min(ys) if y_diff else 0
+                        ]
+
+                    elif next_x > sett.WIDTH or next_y > sett.HEIGHT:
+                        collides['map_border'] = [
+                            sett.VISIBLE_WIDTH - max(xs) if x_diff else 0,
+                            sett.VISIBLE_HEIGHT - max(ys) if y_diff else 0
+                        ]
+
                     else:
                         if coords[0] < next_x < coords[2] and coords[1] < next_y < coords[3]:
                             if x_diff < 0:
@@ -322,50 +409,60 @@ class TkEngine(tk.Frame):
         return 'wall' in collide_objects
 
     def move(self, obj, action, x_diff, y_diff, move_step=sett.CELL_SIZE, break_time=50, lightning_obj=None):
-        """ The movement logic is only accepted for small steps movement
-            (less than wall size). Not critical. But unacceptable.
-            TODO:
-            1) is_step_too_big_check when step > wall size
-            2) small_steps_collide_check logic
-            Better to do that ASAP, because it's an architecture issue.
-            Also, action field is deprecated, legacy and I don't know, why it's still here
-        """
-
         collide_objects = self.get_next_step_collide_objects(obj, move_step * x_diff, move_step * y_diff)
+
         is_enemy_ahead = self.is_enemy(collide_objects)
         is_wall_ahead = self.is_wall(collide_objects)
         is_border_ahead = self.is_map_border(collide_objects)
 
         if not is_wall_ahead and not is_border_ahead and not is_enemy_ahead:
-            coords = [move_step*x_diff, move_step*y_diff]
+            coords = [
+                move_step * x_diff,
+                move_step * y_diff
+            ]
+
         elif is_wall_ahead:
             coords = collide_objects.get('wall', [0, 0])
+
         elif is_border_ahead:
             coords = collide_objects.get('map_border', [0, 0])
-        elif obj == 'player' and is_enemy_ahead:
-            coords = [move_step*x_diff, move_step*y_diff]
-        elif type(obj) == int and self.canvas.gettags(obj)[0] in ['smart_enemy', 'glitch_enemy'] and is_enemy_ahead:
+
+        elif obj['tag'] == 'player' and is_enemy_ahead:
+            coords = [
+                move_step * x_diff,
+                move_step * y_diff
+            ]
+
+        elif obj['tag'] in ['smart_enemy', 'glitch_enemy'] and is_enemy_ahead:
             coords = [0, 0]
+
         else:
             coords = [0, 0]
 
-        if obj == 'player':
-            self.player_cur_coords = [self.player_cur_coords[0]+coords[0], self.player_cur_coords[1]+coords[1]]
+        if obj['tag'] == 'player':
+            self.player_cur_coords = [
+                self.player_cur_coords[0] + coords[0],
+                self.player_cur_coords[1] + coords[1]
+            ]
             _coords = self.canvas.coords('player')
 
-            if self.camera_borders < self.player_cur_coords[0] < sett.WIDTH-self.camera_borders and x_diff:
+            if self.camera_borders < self.player_cur_coords[0] < sett.WIDTH - self.camera_borders and x_diff:
                 center_x = sum(_coords[::2]) / 2
                 ms = move_step * x_diff
-                if not (self.camera_borders < center_x+ms < sett.VISIBLE_WIDTH - self.camera_borders):
-                    self.canvas.move(tk.ALL, -coords[0], -coords[1])
+                if not (self.camera_borders < center_x + ms < sett.VISIBLE_WIDTH - self.camera_borders):
+                    self.map_shift[0] -= coords[0]
+                    self.map_shift[1] -= coords[1]
 
-            if self.camera_borders < self.player_cur_coords[1] < sett.HEIGHT-self.camera_borders and y_diff:
+            if self.camera_borders < self.player_cur_coords[1] < sett.HEIGHT - self.camera_borders and y_diff:
                 center_y = sum(_coords[1::2]) / 2
                 ms = move_step * y_diff
-                if not (self.camera_borders < center_y+ms < sett.VISIBLE_HEIGHT - self.camera_borders):
-                    self.canvas.move(tk.ALL, -coords[0], -coords[1])
+                if not (self.camera_borders < center_y + ms < sett.VISIBLE_HEIGHT - self.camera_borders):
+                    self.map_shift[0] -= coords[0]
+                    self.map_shift[1] -= coords[1]
+                    # self.canvas.move(tk.ALL, -coords[0]*5, -coords[1]*5)
 
-        self.canvas.move(obj, coords[0], coords[1])
+        obj['x'] += coords[0]
+        obj['y'] += coords[1]
         if lightning_obj:
             self.canvas.move(lightning_obj, coords[0], coords[1])
         self.canvas.after(break_time)
@@ -390,16 +487,16 @@ class TkEngine(tk.Frame):
                     break_time = int(break_time * 0.8)
 
                 if self.keyboard_is_pressed_from_list(sett.MOVEMENT_KEYS['UP']):
-                    self.move('player', 'UP', 0, -1, self.player_move_step, break_time, 'main_light')
+                    self.move(self.player_obj, 'UP', 0, -1, self.player_move_step, break_time, 'main_light')
 
                 if self.keyboard_is_pressed_from_list(sett.MOVEMENT_KEYS['DOWN']):
-                    self.move('player', 'DOWN', 0, 1, self.player_move_step, break_time, 'main_light')
+                    self.move(self.player_obj, 'DOWN', 0, 1, self.player_move_step, break_time, 'main_light')
 
                 if self.keyboard_is_pressed_from_list(sett.MOVEMENT_KEYS['LEFT']):
-                    self.move('player', 'LEFT', -1, 0, self.player_move_step, break_time, 'main_light')
+                    self.move(self.player_obj, 'LEFT', -1, 0, self.player_move_step, break_time, 'main_light')
 
                 if self.keyboard_is_pressed_from_list(sett.MOVEMENT_KEYS['RIGHT']):
-                    self.move('player', 'RIGHT', 1, 0, self.player_move_step, break_time, 'main_light')
+                    self.move(self.player_obj, 'RIGHT', 1, 0, self.player_move_step, break_time, 'main_light')
 
             except Exception as e:
                 break
