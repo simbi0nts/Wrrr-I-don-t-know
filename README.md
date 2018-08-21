@@ -48,6 +48,10 @@ All you need are Tkinter (I've been using Tk 8.6, but it also may be working wit
 </p>
 </details>
 
-Update 5:
-quite the same, but
-+ now there is rendering
+
+<details><summary>Update 5</summary>
+<p>
+  quite the same, but
+  + now there is rendering
+</p>
+</details>
